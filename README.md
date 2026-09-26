@@ -195,9 +195,12 @@ nvfp4 + CUDA Graph + NVENC の組み合わせで、**生成時間 < 再生時間
 全常駐構成は重みのロードだけで約32.5GBの空きVRAMを必要とし、32GB級には載りません（空き31GB制限のテストでロード段階OOMを実測）。`LTX25_LOAD_UPSAMPLERS=0` と `LTX25_TE_DIET=1` を追加した構成なら、**常駐・ピークとも28.8GBに収まり、512×384・20fps・97フレーム・4stepのa2vが定常3.8秒/チャンク（リアルタイム比0.79倍）** で生成できます（空き31GB＝ヘッドレス5090相当に制限したバラスト実測。速度は48GB構成の3.5秒とほぼ同等、同一プロセス内はseed固定でframemd5完全一致）。
 
 ```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
 LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
 ```
+
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は多shape運用時に必須です。会話アプリのような実ワークロード（待機動画・アンカー・低解像度先頭チャンク・本番チャンクで複数のCUDA Graph captureが走る）では、アロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。expandable_segmentsでこれを回収すると、7チャンク連続朗読の通し（各チャンク生成3.2〜3.7秒/4.8秒＝0.66〜0.77x）がOOMなしで完走します。CUDA Graphとの併用も動作確認済みです。
 
 前提: ①upscale/t2i品質経路は使えません ②ヘッドルームは約2GBのため**GPUは本サーバの専有が前提**（TTS・LLM等を同居させる場合はCPU実行か別ホストへ）③ヘッドレス運用（画面出力は別GPU/iGPU）。
 

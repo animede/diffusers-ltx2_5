@@ -196,9 +196,12 @@ With nvfp4 + CUDA Graph + NVENC combined, **streaming generation faster than pla
 The all-resident configuration needs ~32.5 GB of free VRAM just to load its weights, so it does not fit 32 GB-class cards (measured: OOM during weight loading with free VRAM capped at 31 GB). Adding `LTX25_LOAD_UPSAMPLERS=0` and `LTX25_TE_DIET=1` brings **resident/peak down to 28.8 GB, generating 512×384 / 20 fps / 97-frame / 4-step a2v chunks in a steady 3.8 s (0.79x realtime)** — verified with a VRAM-capped ballast test at 31 GB free (headless RTX 5090 equivalent). Speed is essentially identical to the 48 GB configuration (3.5 s), and output is fully deterministic within a process (identical framemd5 for a fixed seed).
 
 ```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
 LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
 ```
+
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is required for multi-shape workloads. A real application (idle clips, speaking anchors, low-res first chunks, and main chunks each trigger their own CUDA Graph capture) accumulates 1.3-1.6 GB of "reserved but unallocated" allocator fragmentation, which causes borderline OOM at exactly 31 GB free (measured). With expandable_segments reclaiming it, a full 7-chunk continuous narration run completes without OOM (3.2-3.7 s per 4.8 s chunk = 0.66-0.77x realtime). Verified compatible with CUDA Graph capture.
 
 Prerequisites: (1) upscale and the t2i quality path are unavailable; (2) headroom is only ~2 GB, so **the GPU must be dedicated to this server** — run TTS/LLM workloads on the CPU or another host; (3) headless operation (display on another GPU / iGPU).
 
