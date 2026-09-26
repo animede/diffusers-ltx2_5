@@ -151,6 +151,8 @@ Use the returned `id` with `GET /api/jobs/{id}`. Once the job reaches `completed
 
 - `LTX25_CUDA_GRAPH`: set to `1` to capture/replay the entire transformer forward as a CUDA Graph, eliminating CPU kernel-launch overhead during denoising (`app/cudagraph.py`). Output is **bit-identical** to eager. Requires `OFFLOAD_MODE=none` (ignored with a warning otherwise). Jobs using LoRA automatically fall back to eager. The gain grows at small resolutions × few steps (see "Realtime generation" below).
 - `LTX25_CUDA_GRAPH_MAX_CAPTURES`: maximum number of captured shapes (default 8). One graph is captured per (resolution, frame count, fps, mode) combination; **shapes beyond the limit silently fall back to eager** after a warning log. Raise this for multi-shape workloads.
+- `LTX25_LOAD_UPSAMPLERS`: `0` skips loading the latent/temporal upsamplers (−1.2 GB GPU-resident). Intended for realtime workloads (always `upscale: false`); with `0`, upscale/temporal_upscale/t2i-quality requests fail with a clear error (default `1`).
+- `LTX25_TE_DIET`: `1` moves the Gemma text encoder's embedding table (bf16, 1.88 GB — bnb 4-bit only quantizes Linear layers, embeddings stay bf16) to the CPU with a gather bridge, and skips the unused all-token logits computation (~0.5 GB transient) (`app/tediet.py`). Total: −1.9 GB resident + −0.5 GB transient, with near-zero speed impact. Requires `OFFLOAD_MODE=none` (warned and ignored otherwise; default `0`). See "Realtime on 32 GB-class GPUs" below.
 - `LTX25_COMPILE_BLOCKS`: [experimental, not recommended] per-block torch.compile (see the docstring in `app/compileblocks.py`). Wins in isolated probes but showed no end-to-end gain on the server and regresses at small resolutions, hence default `off`.
 - `LTX25_VIDEO_ENCODER`: `nvenc` (default, h264_nvenc) or `x264`. Falls back to x264 automatically when NVENC is unavailable.
 - `LTX25_NVENC_PRESET`: NVENC preset (`p1` fastest to `p7` highest quality, default `p7`). Use `p4` for realtime workloads to shave 0.1-0.15 s off encoding.
@@ -188,6 +190,17 @@ The **goal of this acceleration stack is minimizing latency for serving/realtime
 - Model-level quality limits (the fps=16 periodic wobble, long-clip stalls) are not solved by acceleration — see the quality notes below.
 
 With nvfp4 + CUDA Graph + NVENC combined, **streaming generation faster than playback (realtime ratio < 1.0x)** is achievable. All measurements below: RTX PRO 6000 Blackwell 96 GB (sm_120), distilled sigmas, 4 steps, ~5-second clips, t2av, `LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 LTX25_NVENC_PRESET=p4`.
+
+### Realtime on 32 GB-class GPUs (RTX 5090) — measured 2026-09-27
+
+The all-resident configuration needs ~32.5 GB of free VRAM just to load its weights, so it does not fit 32 GB-class cards (measured: OOM during weight loading with free VRAM capped at 31 GB). Adding `LTX25_LOAD_UPSAMPLERS=0` and `LTX25_TE_DIET=1` brings **resident/peak down to 28.8 GB, generating 512×384 / 20 fps / 97-frame / 4-step a2v chunks in a steady 3.8 s (0.79x realtime)** — verified with a VRAM-capped ballast test at 31 GB free (headless RTX 5090 equivalent). Speed is essentially identical to the 48 GB configuration (3.5 s), and output is fully deterministic within a process (identical framemd5 for a fixed seed).
+
+```bash
+LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
+LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
+```
+
+Prerequisites: (1) upscale and the t2i quality path are unavailable; (2) headroom is only ~2 GB, so **the GPU must be dedicated to this server** — run TTS/LLM workloads on the CPU or another host; (3) headless operation (display on another GPU / iGPU).
 
 ### CUDA Graph gains (bit-identical, measured)
 

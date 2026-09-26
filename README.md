@@ -4,6 +4,8 @@
 
 `Lightricks/LTX-2.5-Diffusers`で、音声付き動画を生成するローカルWebアプリです。FastAPIの非同期ジョブAPIとWeb UIを同じプロセスで提供します。T2AV、I2V、先頭／末尾フレーム指定（FLF2V）、任意の画像／動画条件に対応します。既定の高品質モードは、初段の潜在出力を2倍アップサンプルし、追加の3-stepで精細化します。
 
+高速化の考え方を他の推論系にも応用できる形で整理した文書は、[生成AI推論を速くするための設計ノート](docs/optimization-techniques.md)を参照してください。LTX-2.5固有のリアルタイム到達値と検証記録は、[高速化の全記録](docs/acceleration-report-20260910.md)にあります。
+
 ## UIサンプル
 
 ![LTX-2.5 StudioのWeb UI](docs/ui-sample.png)
@@ -150,6 +152,8 @@ curl -X POST http://localhost:8000/api/jobs \
 - `LTX25_TRANSFORMER_PRECISION`: transformerの精度。`nf4`（既定・bnb 4bit）、`fp8`（bf16重みをlayerwise castingでfp8_e4m3fnストレージ化・演算はbf16）、`bf16`（リリース重み約38GB）。`fp8`は品質がbf16同等のまま実測ピークVRAMが静止画26.5GB / 動画121フレーム28.9GBに収まる48GB級GPU向けの推奨構成です（castはCPU上で適用するためGPU側の一時38GBピークは発生しません。要: bf16 transformerシャード約38GBのHFキャッシュ）。`bf16`は96GB級GPU向け、24GB級では`nf4`のまま使ってください。text_encoderはいずれの値でもNF4です。**`nvfp4`（2026-09追加・sm_120 Blackwell専用）**: Lightricks公式配布のBlackwellネイティブFP4蒸留transformer（常駐約19GB）を`torch._scaled_mm`のFP4 GEMMで直接実行します（`app/nvfp4.py`。GEMM素でbf16比3.2〜3.8倍、リアルタイム用途の最速構成。`LTX25_NVFP4_CKPT`でローカルファイルを指定可、未指定ならHF Hubから自動取得）
 - `LTX25_CUDA_GRAPH`: `1`でtransformer forward全体をCUDA Graph capture/replayし、denoiseのCPUカーネル起動コストを消します（`app/cudagraph.py`）。出力はeagerと**bit完全一致**。`OFFLOAD_MODE=none`前提（それ以外では警告して無効）。LoRAを使うジョブは自動でeagerに落ちます。効果は小解像度×少ステップほど大きい（下記「リアルタイム生成と高速化」参照）
 - `LTX25_CUDA_GRAPH_MAX_CAPTURES`: graphを保持するshape数の上限（既定8）。解像度・フレーム数・fps・モード（t2av/a2v）の組ごとに1本captureされ、**上限超過のshapeは警告ログの上、黙ってeagerにフォールバック**します。多shape運用では引き上げてください
+- `LTX25_LOAD_UPSAMPLERS`: `0`でlatent/temporal upsamplerを読み込みません（GPU常駐 −1.2GB）。リアルタイム用途（常に`upscale: false`）向けの削減で、`0`のときupscale/temporal_upscale/t2i品質経路の要求は明確なエラーになります（既定`1`）
+- `LTX25_TE_DIET`: `1`でGemmaテキストエンコーダの埋め込みテーブル（bf16 1.88GB。bnb 4bit量子化はLinear層のみで埋め込みは対象外）をCPUへ移してgatherをブリッジし、さらに未使用の全トークンlogits計算（一時約0.5GB）をスキップします（`app/tediet.py`）。合計で常駐 −1.9GB＋一時 −0.5GB、速度影響はほぼゼロ。`OFFLOAD_MODE=none`専用（それ以外では警告して無効、既定`0`）。下記「32GB級GPUでのリアルタイム」参照
 - `LTX25_COMPILE_BLOCKS`: 【実験的・非推奨】per-block torch.compile（`app/compileblocks.py`のdocstring参照）。probeではgraph単体に勝つがサーバE2Eでは利得なし・小解像度では退行、と実測済みのため既定`off`
 - `LTX25_VIDEO_ENCODER`: `nvenc`（既定・h264_nvenc）または`x264`。NVENC不在環境はx264へ自動フォールバック
 - `LTX25_NVENC_PRESET`: NVENCプリセット（`p1`最速〜`p7`最高品質、既定`p7`）。リアルタイム用途は`p4`でエンコード0.1〜0.15s短縮
@@ -185,6 +189,17 @@ curl -X POST http://localhost:8000/api/jobs \
 - モデル自体の品質限界(fps=16 の周期揺らぎ、長尺の stall)は高速化では解決しません — 下記の品質節を参照
 
 nvfp4 + CUDA Graph + NVENC の組み合わせで、**生成時間 < 再生時間（リアルタイム比 1.0x 未満）のストリーミング生成**が成立します。実測はすべて RTX PRO 6000 Blackwell 96GB（sm_120）、蒸留σ・4step・約5秒クリップ・t2av、`LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 LTX25_NVENC_PRESET=p4`。
+
+### 32GB級GPU（RTX 5090）でのリアルタイム（2026-09-27 実測）
+
+全常駐構成は重みのロードだけで約32.5GBの空きVRAMを必要とし、32GB級には載りません（空き31GB制限のテストでロード段階OOMを実測）。`LTX25_LOAD_UPSAMPLERS=0` と `LTX25_TE_DIET=1` を追加した構成なら、**常駐・ピークとも28.8GBに収まり、512×384・20fps・97フレーム・4stepのa2vが定常3.8秒/チャンク（リアルタイム比0.79倍）** で生成できます（空き31GB＝ヘッドレス5090相当に制限したバラスト実測。速度は48GB構成の3.5秒とほぼ同等、同一プロセス内はseed固定でframemd5完全一致）。
+
+```bash
+LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
+LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
+```
+
+前提: ①upscale/t2i品質経路は使えません ②ヘッドルームは約2GBのため**GPUは本サーバの専有が前提**（TTS・LLM等を同居させる場合はCPU実行か別ホストへ）③ヘッドレス運用（画面出力は別GPU/iGPU）。
 
 ### CUDA Graph の効果（bit一致・実測）
 
