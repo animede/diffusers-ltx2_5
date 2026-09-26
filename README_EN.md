@@ -197,11 +197,11 @@ The all-resident configuration needs ~32.5 GB of free VRAM just to load its weig
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
+LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none \
 LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
 ```
 
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is required for multi-shape workloads. A real application (idle clips, speaking anchors, low-res first chunks, and main chunks each trigger their own CUDA Graph capture) accumulates 1.3-1.6 GB of "reserved but unallocated" allocator fragmentation, which causes borderline OOM at exactly 31 GB free (measured). With expandable_segments reclaiming it, a full 7-chunk continuous narration run completes without OOM (3.2-3.7 s per 4.8 s chunk = 0.66-0.77x realtime). Verified compatible with CUDA Graph capture.
+Two additional settings are the practical conclusion for 32 GB (based on an end-to-end test with a real conversation app). (1) `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is required: multi-shape workloads accumulate 1.3-1.6 GB of "reserved but unallocated" allocator fragmentation, which causes borderline OOM at exactly 31 GB free (measured). (2) Keep `LTX25_CUDA_GRAPH` **disabled**: real applications hit many shapes (idle clips, speaking anchors, low-res first chunks, chained turn chunks), and per-capture graph pool growth does not fit the 31 GB budget — new-shape workspace allocations OOM at the margin (measured). The graph gain at these resolutions is small (3.5 s vs 3.4 s steady), and without it an 11-chunk conversation turn still sustains realtime (~4 s per 4.8 s chunk). On 48 GB+ GPUs, keeping the graph enabled remains fastest.
 
 Prerequisites: (1) upscale and the t2i quality path are unavailable; (2) headroom is only ~2 GB, so **the GPU must be dedicated to this server** — run TTS/LLM workloads on the CPU or another host; (3) headless operation (display on another GPU / iGPU).
 

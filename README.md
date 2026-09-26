@@ -196,11 +196,11 @@ nvfp4 + CUDA Graph + NVENC の組み合わせで、**生成時間 < 再生時間
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
+LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none \
 LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
 ```
 
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は多shape運用時に必須です。会話アプリのような実ワークロード（待機動画・アンカー・低解像度先頭チャンク・本番チャンクで複数のCUDA Graph captureが走る）では、アロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。expandable_segmentsでこれを回収すると、7チャンク連続朗読の通し（各チャンク生成3.2〜3.7秒/4.8秒＝0.66〜0.77x）がOOMなしで完走します。CUDA Graphとの併用も動作確認済みです。
+32GB構成では2点の追加設定が実運用の結論です（会話アプリでの実機通し検証に基づく）。①`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は必須。多shape実ワークロードではアロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。②`LTX25_CUDA_GRAPH` は**無効のまま**にします。shape種が多い実アプリ（待機動画・アンカー・低解像度先頭チャンク・ターン内連結チャンク）ではcaptureごとのgraph pool蓄積が31GB予算に収まらず、新shapeのワークスペース確保が境界OOMになることを実測しました。この解像度帯のgraph利得は小さく（定常3.5秒 vs 3.4秒）、graph無効でも会話11チャンク連続（約4秒/チャンク < 再生4.8秒）でリアルタイムを維持します。48GB以上ではgraph有効が引き続き最速です。
 
 前提: ①upscale/t2i品質経路は使えません ②ヘッドルームは約2GBのため**GPUは本サーバの専有が前提**（TTS・LLM等を同居させる場合はCPU実行か別ホストへ）③ヘッドレス運用（画面出力は別GPU/iGPU）。
 
