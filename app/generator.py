@@ -228,7 +228,7 @@ class LTXGenerator:
                     "Run scripts/download_quantize_ltx25.py first."
                 )
             upsampler_dir = model_dir / "latent_upsampler"
-            if not upsampler_dir.is_dir():
+            if self.config.ltx25_load_upsamplers and not upsampler_dir.is_dir():
                 raise RuntimeError(
                     f"LTX-2.5 latent upsampler is missing under {model_dir}. "
                     "Run scripts/download_quantize_ltx25.py --component quality first."
@@ -321,39 +321,65 @@ class LTXGenerator:
                 local_files_only=True,
             )
             pipe.vae.enable_tiling()
-            latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
-                model_dir,
-                subfolder="latent_upsampler",
-                dtype=torch.bfloat16,
-                local_files_only=True,
-            )
-            upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
+            upsample_pipe = None
             temporal_upsample_pipe = None
-            if temporal_upsampler_dir.is_dir():
-                temporal_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+            if self.config.ltx25_load_upsamplers:
+                latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
                     model_dir,
-                    subfolder="temporal_latent_upsampler",
+                    subfolder="latent_upsampler",
                     dtype=torch.bfloat16,
                     local_files_only=True,
                 )
-                temporal_upsample_pipe = LTX2LatentUpsamplePipeline(
-                    vae=pipe.vae, latent_upsampler=temporal_upsampler
-                )
+                upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
+                if temporal_upsampler_dir.is_dir():
+                    temporal_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+                        model_dir,
+                        subfolder="temporal_latent_upsampler",
+                        dtype=torch.bfloat16,
+                        local_files_only=True,
+                    )
+                    temporal_upsample_pipe = LTX2LatentUpsamplePipeline(
+                        vae=pipe.vae, latent_upsampler=temporal_upsampler
+                    )
+            else:
+                # リアルタイム用途向け(LTX25_LOAD_UPSAMPLERS=0): 常に upscale:false の
+                # ため latent(950MB)/temporal(250MB)upsampler を常駐させない。
+                print("[ltx25] upsamplers not loaded (LTX25_LOAD_UPSAMPLERS=0, -1.2GB)", flush=True)
             if self.config.offload_mode == "none":
                 pipe.to("cuda")
-                upsample_pipe.to("cuda")
+                if upsample_pipe is not None:
+                    upsample_pipe.to("cuda")
                 if temporal_upsample_pipe is not None:
                     temporal_upsample_pipe.to("cuda")
             elif self.config.offload_mode == "sequential":
                 pipe.enable_sequential_cpu_offload()
-                upsample_pipe.enable_sequential_cpu_offload()
+                if upsample_pipe is not None:
+                    upsample_pipe.enable_sequential_cpu_offload()
                 if temporal_upsample_pipe is not None:
                     temporal_upsample_pipe.enable_sequential_cpu_offload()
             else:
                 pipe.enable_model_cpu_offload()
-                upsample_pipe.enable_model_cpu_offload()
+                if upsample_pipe is not None:
+                    upsample_pipe.enable_model_cpu_offload()
                 if temporal_upsample_pipe is not None:
                     temporal_upsample_pipe.enable_model_cpu_offload()
+            if self.config.ltx25_te_diet:
+                if self.config.offload_mode != "none":
+                    print(
+                        "[ltx25] LTX25_TE_DIET=1 ignored: requires OFFLOAD_MODE=none "
+                        f"(got {self.config.offload_mode!r})",
+                        flush=True,
+                    )
+                else:
+                    from .tediet import apply_te_diet
+
+                    freed = apply_te_diet(pipe.text_encoder)
+                    torch.cuda.empty_cache()
+                    print(
+                        f"[ltx25] TE diet applied: embed_tokens -> CPU ({freed:.2f}GiB freed), "
+                        "lm_head skipped (~0.5GB transient logits removed)",
+                        flush=True,
+                    )
             if self.config.ltx25_compile_blocks != "off":
                 # per-block torch.compile(app/compileblocks.py)。CUDA Graph の
                 # install より前に適用する(graph は compile 済みブロックの呼び出しを
@@ -822,6 +848,12 @@ class LTXGenerator:
             # (8 sigmas -> 2x latent upsample -> 3-sigma refine), probes P3 / P6.
             num_frames = request.num_frames or 9
             use_diffusion_decoder = request.mode == "t2i" and decoder_kind == "diffusion"
+            if self._upsample_pipe is None:
+                # t2i の品質パイプライン(2x latent upsample -> refine)は upsampler 必須。
+                raise RuntimeError(
+                    "latent upsampler が未ロードです(LTX25_LOAD_UPSAMPLERS=0 のリアルタイム構成)。"
+                    "t2i を使うには LTX25_LOAD_UPSAMPLERS=1 のプリセットで起動し直してください。"
+                )
             if use_diffusion_decoder and num_frames < 17:
                 # NATTEN na3d needs >= its (11,11,11) kernel per tile: nf=9 fails, nf=17 works
                 # (probes P4 vs P4_nf17). Promote internally.
@@ -1224,6 +1256,12 @@ class LTXGenerator:
 
         decoder_kind = request.decoder or self.config.ltx25_decoder
         use_refine = request.upscale or request.temporal_upscale
+        if use_refine and self._upsample_pipe is None:
+            raise RuntimeError(
+                "latent upsampler が未ロードです(LTX25_LOAD_UPSAMPLERS=0 のリアルタイム構成)。"
+                "upscale / temporal_upscale を使うには LTX25_LOAD_UPSAMPLERS=1 のプリセットで"
+                "バックエンドを起動し直してください。"
+            )
         use_diffusion_decoder = use_refine and decoder_kind == "diffusion"
         final_fps = effective_fps * (2 if request.temporal_upscale else 1)
 

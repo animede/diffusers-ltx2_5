@@ -69,6 +69,18 @@ class Settings(BaseSettings):
     # 1 shape あたり静的入出力バッファ+graph 中間メモリ(共有 mempool)を保持する。
     # Env: LTX25_CUDA_GRAPH_MAX_CAPTURES
     ltx25_cuda_graph_max_captures: int = 8
+    # latent/temporal upsampler をロードするか。0 で GPU 常駐 -1.2GB
+    # (latent 950MB + temporal 250MB、OFFLOAD_MODE=none 時)。リアルタイム
+    # 用途は常に upscale:false のため不要。0 のとき upscale/temporal_upscale
+    # 要求は明確なエラーになる。Env: LTX25_LOAD_UPSAMPLERS
+    ltx25_load_upsamplers: bool = True
+    # Gemma TE のダイエット(app/tediet.py): embed_tokens(bf16 1.88GB)を
+    # CPU へ移して gather をブリッジし、lm_head(tied)の全トークン logits
+    # (1024x262144 bf16 ≈ 0.5GB の一時確保)をスキップする。合計で常駐
+    # -1.9GB + エンコード時一時 -0.5GB。OFFLOAD_MODE=none 専用(それ以外は
+    # 警告して無効)。32GB 級(RTX 5090)で全常駐を成立させるための削減。
+    # Env: LTX25_TE_DIET
+    ltx25_te_diet: bool = False
     # 【実験的・非推奨】transformer_blocks の per-block torch.compile
     # (app/compileblocks.py のモジュール docstring の結論を必ず読むこと)。
     # "off"(既定)/ "islands" / "fusion"。probe では graph 単体に勝つが、
