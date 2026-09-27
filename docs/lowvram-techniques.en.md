@@ -1,6 +1,6 @@
 # Low-VRAM Techniques for Generative AI Inference — Fitting a 22B Video Model into 32 GB
 
-This document explains the VRAM-reduction techniques used to fit LTX-2.5 (a 22B DiT) — in its fully resident, real-time serving configuration — from a 48 GB-class GPU down to a 32 GB-class GPU, written so the ideas transfer to other models and inference servers. The speed-side companion is the [design notes on making generative AI inference fast](optimization-techniques.md) (Japanese); LTX-2.5-specific history and measurements are in the [full acceleration report](acceleration-report-20260910.md) (Japanese).
+This document explains the VRAM-reduction techniques used to fit LTX-2.5 (a 22B DiT) — in its fully resident, real-time serving configuration — from a 48 GB-class GPU down to a 32 GB-class GPU, written so the ideas transfer to other models and inference servers. The speed-side companion is [Design Notes on Making Generative AI Inference Fast](optimization-techniques.en.md); LTX-2.5-specific history and measurements are in the [full acceleration report](acceleration-report-20260910.md) (Japanese).
 
 The end result first (all measured, with free VRAM capped at 31 GB — a headless RTX 5090 equivalent):
 
