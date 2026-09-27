@@ -4,7 +4,7 @@
 
 `Lightricks/LTX-2.5-Diffusers`で、音声付き動画を生成するローカルWebアプリです。FastAPIの非同期ジョブAPIとWeb UIを同じプロセスで提供します。T2AV、I2V、先頭／末尾フレーム指定（FLF2V）、任意の画像／動画条件に対応します。既定の高品質モードは、初段の潜在出力を2倍アップサンプルし、追加の3-stepで精細化します。
 
-高速化の考え方を他の推論系にも応用できる形で整理した文書は、[生成AI推論を速くするための設計ノート](docs/optimization-techniques.md)を参照してください。その対になる低VRAM化編として、22Bモデルを32GB級GPUへ収めた技術の詳細解説が[生成AI推論の低VRAM化 技術解説](docs/lowvram-techniques.md)にあります。LTX-2.5固有のリアルタイム到達値と検証記録は、[高速化の全記録](docs/acceleration-report-20260910.md)にあります。
+高速化の考え方を他の推論系にも応用できる形で整理した文書は、[生成AI推論を速くするための設計ノート](docs/optimization-techniques.md)を参照してください。その対になる低VRAM化編として、22Bモデルを32GB級GPUへ収めた技術の詳細解説が[生成AI推論の低VRAM化 技術解説](docs/lowvram-techniques.md)（[English](docs/lowvram-techniques.en.md)）にあります。LTX-2.5固有のリアルタイム到達値と検証記録は、[高速化の全記録](docs/acceleration-report-20260910.md)にあります。
 
 ## UIサンプル
 

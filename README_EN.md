@@ -4,6 +4,8 @@ English | [日本語](README.md)
 
 A local web application for generating video with synchronized audio using `Lightricks/LTX-2.5-Diffusers`. It serves an asynchronous FastAPI job API and a web UI from the same process. It supports T2AV, I2V, first/last-frame conditioning (FLF2V), and arbitrary image/video conditions. The default high-quality path upsamples the initial latent output by 2× and applies an additional 3-step refinement pass.
 
+For a detailed, transferable write-up of the VRAM-reduction techniques that fit this 22B model into a 32 GB-class GPU (quantization blind spots, windowed layer streaming, allocator fragmentation, CUDA Graph interactions, and measurement methodology), see [Low-VRAM Techniques for Generative AI Inference](docs/lowvram-techniques.en.md).
+
 ## UI sample
 
 ![LTX-2.5 Studio web UI](docs/ui-sample.png)
