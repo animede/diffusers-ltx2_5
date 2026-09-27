@@ -2,7 +2,7 @@
 
 *How we took LTX-2.5 (a 22B audio+video DiT) from 90 seconds per clip to faster-than-playback, and then fit the whole thing into a 32 GB-class GPU without giving the speed back.*
 
-<video controls src="https://github.com/user-attachments/assets/de1c4714-00a0-4342-a8cc-ed683af00a8b" style="max-width: 100%;"></video>
+https://github.com/user-attachments/assets/de1c4714-00a0-4342-a8cc-ed683af00a8b
 
 *An unedited, real-speed recording: a local LLM streams a reply, local TTS voices it, and LTX-2.5 generates the talking video in 5-second chunks faster than they play back. This exact recording was made with free VRAM capped at 31 GB — a headless RTX 5090 equivalent. The character speaks Japanese; the pipeline is language-agnostic.*
 
