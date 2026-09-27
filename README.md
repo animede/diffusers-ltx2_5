@@ -196,13 +196,11 @@ nvfp4 + CUDA Graph + NVENC の組み合わせで、**生成時間 < 再生時間
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none \
-LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 ./run.sh
+LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
+LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 LTX25_TE_STREAM=1 ./run.sh
 ```
 
-32GB構成では2点の追加設定が実運用の結論です（会話アプリでの実機通し検証に基づく）。①`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は必須。多shape実ワークロードではアロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。②`LTX25_CUDA_GRAPH` は**無効のまま**にします。shape種が多い実アプリ（待機動画・アンカー・低解像度先頭チャンク・ターン内連結チャンク）ではcaptureごとのgraph pool蓄積が31GB予算に収まらず、新shapeのワークスペース確保が境界OOMになることを実測しました。この解像度帯のgraph利得は小さく（定常3.5秒 vs 3.4秒）、graph無効でも会話11チャンク連続（約4秒/チャンク < 再生4.8秒）でリアルタイムを維持します。48GB以上ではgraph有効が引き続き最速です。
-
-今後の改良候補（未着手）: テキストエンコーダのNF4言語モデル本体（約5.7GB）を非常駐化すると、常駐は約23GBまで下がり、32GB構成でもCUDA Graphを再有効化できる見込みです。検討済みの実装順は、(1) prompt embedsのキャッシュ（ターン内でプロンプトが同一ならTE実行はターン1回になり、退避コストが実質消える）、(2) エンコード時のみTEを丸ごとGPU⇄CPUスワップ（転送5.7GBで+0.3〜0.5秒/回）、(3) pinned host memoryからの層単位ストリーミング+先読み（転送律速で+0.15〜0.25秒/回。bnb NF4とオフロードフックの相性が未検証）の順です。
+32GB構成では2点の追加設定が実運用の結論です（会話アプリでの実機通し検証に基づく）。①`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は必須。多shape実ワークロードではアロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。②`LTX25_TE_STREAM=1`（TEの窓付き層ストリーミング、`app/testream.py`）を有効にします。NF4言語モデル層（5.7GB）をpinned host memoryに常駐させ、エンコード中だけ層単位の先読み転送でGPUへ流す方式で、常駐は約23.6GBまで下がり（encode +0.16秒、出力は全常駐とbit完全一致）、**CUDA Graphを32GB構成でも再有効化できます**（TE_STREAMなしでは会話のような多shape実運用でgraph poolが31GB予算に収まらず境界OOMでした）。会話7チャンク連続の通しで全チャンク成功・ピーク27.1GB・約4秒/チャンク（< 再生4.8秒）を実測済みです。なおdiffusersの`apply_group_offloading`（stream時は1層グループ強制で+1.0秒/encode）では遅すぎたため、自前実装です。48GB以上ではストリーミング不要（`nvfp4-fast`のまま）が最速です。
 
 前提: ①upscale/t2i品質経路は使えません ②ヘッドルームは約2GBのため**GPUは本サーバの専有が前提**（TTS・LLM等を同居させる場合はCPU実行か別ホストへ）③ヘッドレス運用（画面出力は別GPU/iGPU）。
 

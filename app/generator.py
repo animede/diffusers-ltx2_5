@@ -380,6 +380,27 @@ class LTXGenerator:
                         "lm_head skipped (~0.5GB transient logits removed)",
                         flush=True,
                     )
+            if self.config.ltx25_te_stream:
+                if self.config.offload_mode != "none":
+                    print(
+                        "[ltx25] LTX25_TE_STREAM=1 ignored: requires OFFLOAD_MODE=none "
+                        f"(got {self.config.offload_mode!r})",
+                        flush=True,
+                    )
+                else:
+                    # tediet の後に適用する(streamed_forward が diet_forward を内側に
+                    # 取り込む)。tediet なしでも動作する(元 forward を包むだけ)。
+                    from .testream import apply_te_stream
+
+                    pinned = apply_te_stream(
+                        pipe.text_encoder, window=self.config.ltx25_te_stream_window
+                    )
+                    torch.cuda.empty_cache()
+                    print(
+                        f"[ltx25] TE stream applied: {pinned:.2f}GiB layers -> pinned host "
+                        f"(window={self.config.ltx25_te_stream_window}, encode +~0.16s, bit-exact)",
+                        flush=True,
+                    )
             if self.config.ltx25_compile_blocks != "off":
                 # per-block torch.compile(app/compileblocks.py)。CUDA Graph の
                 # install より前に適用する(graph は compile 済みブロックの呼び出しを

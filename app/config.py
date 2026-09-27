@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     # 警告して無効)。32GB 級(RTX 5090)で全常駐を成立させるための削減。
     # Env: LTX25_TE_DIET
     ltx25_te_diet: bool = False
+    # Gemma TE の窓付き層ストリーミング(app/testream.py): NF4言語モデル層
+    # (~5.0GB)を pinned host に常駐させ、エンコード中だけ層単位でGPUへ流す
+    # (先読み window=2、転送は計算に完全に隠れる)。実測: TE常駐 5.75->0.77GiB、
+    # encode +0.156s、出力は全常駐と bit 完全一致。32GB級で常駐 ~23.8GB になり
+    # CUDA Graph 再有効化の余地を作る。OFFLOAD_MODE=none 専用。
+    # Env: LTX25_TE_STREAM
+    ltx25_te_stream: bool = False
+    # ストリーミングの先読み窓(層数)。2で転送が計算に隠れる(W=4/8でも同速)。
+    # Env: LTX25_TE_STREAM_WINDOW
+    ltx25_te_stream_window: int = 2
     # 【実験的・非推奨】transformer_blocks の per-block torch.compile
     # (app/compileblocks.py のモジュール docstring の結論を必ず読むこと)。
     # "off"(既定)/ "islands" / "fusion"。probe では graph 単体に勝つが、
