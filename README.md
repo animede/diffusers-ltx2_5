@@ -200,7 +200,7 @@ LTX25_TRANSFORMER_PRECISION=nvfp4 OFFLOAD_MODE=none LTX25_CUDA_GRAPH=1 \
 LTX25_NVENC_PRESET=p4 LTX25_LOAD_UPSAMPLERS=0 LTX25_TE_DIET=1 LTX25_TE_STREAM=1 ./run.sh
 ```
 
-32GB構成では2点の追加設定が実運用の結論です（会話アプリでの実機通し検証に基づく）。①`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は必須。多shape実ワークロードではアロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。②`LTX25_TE_STREAM=1`（TEの窓付き層ストリーミング、`app/testream.py`）を有効にします。NF4言語モデル層（5.7GB）をpinned host memoryに常駐させ、エンコード中だけ層単位の先読み転送でGPUへ流す方式で、常駐は約23.6GBまで下がり（encode +0.16秒、出力は全常駐とbit完全一致）、**CUDA Graphを32GB構成でも再有効化できます**（TE_STREAMなしでは会話のような多shape実運用でgraph poolが31GB予算に収まらず境界OOMでした）。会話7チャンク連続の通しで全チャンク成功・ピーク27.1GB・約4秒/チャンク（< 再生4.8秒）を実測済みです。なおdiffusersの`apply_group_offloading`（stream時は1層グループ強制で+1.0秒/encode）では遅すぎたため、自前実装です。48GB以上ではストリーミング不要（`nvfp4-fast`のまま）が最速です。
+32GB構成では2点の追加設定が実運用の結論です（会話アプリでの実機通し検証に基づく）。①`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` は必須。多shape実ワークロードではアロケータ断片化で1.3〜1.6GBの「予約済み未使用」領域が発生し、31GBちょうどの環境では境界OOMになります（実測）。②`LTX25_TE_STREAM=1`（TEの窓付き層ストリーミング、`app/testream.py`）を有効にします。NF4言語モデル層（5.7GB）をpinned host memoryに常駐させ、エンコード中だけ層単位の先読み転送でGPUへ流す方式で、常駐は約23.6GBまで下がり（encode +0.16秒、出力は全常駐とbit完全一致）、**CUDA Graphを32GB構成でも再有効化できます**（TE_STREAMなしでは会話のような多shape実運用でgraph poolが31GB予算に収まらず境界OOMでした）。会話7チャンク連続の通しで全チャンク成功・ピーク27.1GB・約4秒/チャンク（< 再生4.8秒）を実測済みです。なお**実機のRTX 5090でも、本構成（TEストリーミング導入前のnvfp4-32gb相当）で会話モードが動作したというコミュニティ報告を2026-09-27に受けています**（VRAM制限テストの結果が実カードでも成立することの裏付け）。なおdiffusersの`apply_group_offloading`（stream時は1層グループ強制で+1.0秒/encode）では遅すぎたため、自前実装です。48GB以上ではストリーミング不要（`nvfp4-fast`のまま）が最速です。
 
 前提: ①upscale/t2i品質経路は使えません ②ヘッドルームは約2GBのため**GPUは本サーバの専有が前提**（TTS・LLM等を同居させる場合はCPU実行か別ホストへ）③ヘッドレス運用（画面出力は別GPU/iGPU）。
 

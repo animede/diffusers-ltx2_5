@@ -95,7 +95,7 @@ Midway, conversation mode showed a distinctive failure: chunks whose shape was a
 | expandable_segments | −1.3–1.6 GB fragments | zero |
 | **Total** | **32.5 → 23.6 GB resident** | chunk gen 3.5 → ~4.0 s (vs 4.8 s playback) |
 
-Verified end to end with free VRAM capped at 31 GB (headless RTX 5090 equivalent), TTS on a second GPU, LLM on another host: a 7-chunk conversation turn, every chunk generated faster than it plays, 27.1 GB peak, CUDA Graphs enabled. Fun fact: our test card actually has *less* raw compute than an RTX 5090 — the constraint was never speed, only VRAM.
+Verified end to end with free VRAM capped at 31 GB (headless RTX 5090 equivalent), TTS on a second GPU, LLM on another host: a 7-chunk conversation turn, every chunk generated faster than it plays, 27.1 GB peak, CUDA Graphs enabled. And it holds up outside the lab: a community user has since reported conversation mode running on a **physical RTX 5090** with this configuration. Fun fact: our test card actually has *less* raw compute than an RTX 5090 — the constraint was never speed, only VRAM.
 
 ## Measurement rules we now refuse to break
 
