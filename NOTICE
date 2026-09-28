@@ -1,0 +1,30 @@
+diffusers-ltx2_5
+Copyright 2026 animede
+
+This repository contains application source code licensed under the Apache
+License, Version 2.0. This includes the acceleration and low-VRAM work
+originally implemented here: the NVFP4 loader (app/nvfp4.py), the CUDA Graph
+wrapper (app/cudagraph.py), the text-encoder diet (app/tediet.py), the
+windowed layer streamer (app/testream.py), and the verification probes under
+probes/.
+
+Third-party libraries, kernels, external services, models, and model weights
+are not relicensed by this project and remain subject to their respective
+licenses and terms. In particular:
+
+- LTX-2 / LTX-2.5 and their derivatives, including model weights, LoRAs, and
+  checkpoints, are governed by Lightricks' LTX-2 Community License Agreement,
+  not by the Apache License. See
+  https://github.com/Lightricks/LTX-2/blob/main/LICENSE
+- The Gemma text encoder and other third-party models, libraries, and kernels
+  follow the licenses and terms set by their respective distributors.
+
+No model weights are included in this repository.
+
+Commercial use notice:
+If you plan to use this project commercially, please contact the project
+maintainer through the repository's GitHub Issues page. This is a voluntary
+request for coordination and does not add a condition to or restrict the
+rights granted by the Apache License, Version 2.0. Note that commercial use
+of the models and weights themselves is governed separately by the licenses
+listed above, which do impose their own conditions.

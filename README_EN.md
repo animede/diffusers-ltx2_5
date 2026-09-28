@@ -239,7 +239,7 @@ Verification scripts used during development are included: CUDA Graph equivalenc
 
 ## License
 
-The application code originally implemented in this repository is provided under the [Apache License 2.0](LICENSE).
+The application code originally implemented in this repository is provided under the [Apache License 2.0](LICENSE). If you redistribute or modify it, the license requires you to retain the attribution in [NOTICE](NOTICE).
 
 > [!IMPORTANT]
 > The Apache License 2.0 does not apply to LTX model weights, LTX-derived LoRAs or checkpoints, Gemma models, or other third-party components.
