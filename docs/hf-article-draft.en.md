@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/de1c4714-00a0-4342-a8cc-ed683af00a8b
 
 *An unedited, real-speed recording: a local LLM streams a reply, local TTS voices it, and LTX-2.5 generates the talking video in 5-second chunks faster than they play back. This exact recording was made with free VRAM capped at 31 GB — a headless RTX 5090 equivalent. The character speaks Japanese; the pipeline is language-agnostic.*
 
-Everything is open: the [video server + acceleration code](https://github.com/animede/diffusers-ltx2_5) (Apache-2.0), the [conversation app](https://github.com/animede/Realtime_Narration_Video) (Apache-2.0), and two detailed technical write-ups this article condenses — [Design Notes on Making Generative AI Inference Fast](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/optimization-techniques.en.md) and [Low-VRAM Techniques for Generative AI Inference](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/lowvram-techniques.en.md).
+Everything is open: the [video server + acceleration code](https://github.com/animede/diffusers-ltx2_5) (Apache-2.0), the [character-rendering server](https://github.com/animede/Realtime_Narration_Video) (Apache-2.0), the [voice-first conversation client](https://github.com/animede/Realtime_Conversation_Video) (Apache-2.0), and two detailed technical write-ups this article condenses — [Design Notes on Making Generative AI Inference Fast](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/optimization-techniques.en.md) and [Low-VRAM Techniques for Generative AI Inference](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/lowvram-techniques.en.md).
 
 ## Why plain diffusers?
 
@@ -107,7 +107,8 @@ Verified end to end with free VRAM capped at 31 GB (headless RTX 5090 equivalent
 ## What's in the repos
 
 - [`animede/diffusers-ltx2_5`](https://github.com/animede/diffusers-ltx2_5) — the server: NVFP4 loader (`app/nvfp4.py`), CUDA Graph wrapper (`app/cudagraph.py`), TE diet (`app/tediet.py`), layer streamer (`app/testream.py`), probes for every claim above. Every optimization is an env flag, every default is off.
-- [`animede/Realtime_Narration_Video`](https://github.com/animede/Realtime_Narration_Video) — the conversation app: sentence-level TTS chunking pipelined against generation, idle-clip pools, turn continuity.
+- [`animede/Realtime_Narration_Video`](https://github.com/animede/Realtime_Narration_Video) — the character-rendering server: sentence-level TTS chunking pipelined against generation, idle-clip pools, turn continuity. It has its own LLM path, so it holds a conversation on its own.
+- [`animede/Realtime_Conversation_Video`](https://github.com/animede/Realtime_Conversation_Video) — a voice-first client on top of it: browser-side VAD segments your speech and sends the WAV straight to an audio-input LLM as `input_audio`, so no ASR sits in the reply path. ROLE injection and rolling history summarization live here; rendering is delegated to the server above.
 - Full write-ups: [speed](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/optimization-techniques.en.md) / [low-VRAM](https://github.com/animede/diffusers-ltx2_5/blob/main/docs/lowvram-techniques.en.md).
 
 Hardware for the numbers above: RTX PRO 6000 / PRO 5000 Blackwell (sm_120), PyTorch 2.11+cu130, diffusers Git. Application code is Apache-2.0; model weights follow Lightricks' LTX license.
