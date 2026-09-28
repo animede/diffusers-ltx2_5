@@ -4,7 +4,7 @@ This document is not about LTX-2.5's end result ("real-time video generation") b
 
 The target implementation is a 22B video+audio DiT, but the core ideas are general. Instead of lumping acceleration together as "making the GPU faster," we decompose it into separate bottlenecks — number of executions, matrix math, kernel launches, decoding, data conversion, encoding — and apply a different tool to each.
 
-Numbers are as of 2026-09-10, measured on an RTX PRO 6000 Blackwell Workstation 96 GB (sm_120), PyTorch 2.11.0+cu130, diffusers Git version, single GPU. Absolute times depend on your environment; the subject of this document is where each technique helped and where it did not.
+The speed numbers here were measured on 2026-09-10 on an RTX PRO 6000 Blackwell Workstation 96 GB (sm_120), PyTorch 2.11.0+cu130, diffusers Git version, single GPU, and the speed-side conclusions are unchanged since. The 32 GB-class configuration was verified separately on 2026-09-27; that work is covered in the low-VRAM companion below, not here. Absolute times depend on your environment; the subject of this document is where each technique helped and where it did not.
 
 The low-VRAM companion to this document — the techniques that fit the same 22B model into a 32 GB-class GPU — is [Low-VRAM Techniques for Generative AI Inference](lowvram-techniques.en.md).
 
