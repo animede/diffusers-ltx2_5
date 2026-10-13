@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     # 1 shape あたり静的入出力バッファ+graph 中間メモリ(共有 mempool)を保持する。
     # Env: LTX25_CUDA_GRAPH_MAX_CAPTURES
     ltx25_cuda_graph_max_captures: int = 8
+    # capture する shape の上限(transformer への hidden_states のトークン数)。
+    # これを超える shape は eager で回し、graph pool を作らない(app/cudagraph.py)。
+    # 大画角は graph pool が中間テンソルごと常駐して empty_cache でも返らず、同居
+    # バックエンドの VRAM を食い潰すため(2026-10-13、MV 1536×896 で実測)。
+    # 既定 8192 はリアルタイム用 shape(352×640×121f ≈ 3.5k / 512×672×97f ≈ 4.4k)を
+    # 含み、MV の 1536×896×121f(≈ 21.5k)を外す値。0 で無制限(旧挙動)。
+    # Env: LTX25_CUDA_GRAPH_MAX_TOKENS
+    ltx25_cuda_graph_max_tokens: int = 8192
     # latent/temporal upsampler をロードするか。0 で GPU 常駐 -1.2GB
     # (latent 950MB + temporal 250MB、OFFLOAD_MODE=none 時)。リアルタイム
     # 用途は常に upscale:false のため不要。0 のとき upscale/temporal_upscale

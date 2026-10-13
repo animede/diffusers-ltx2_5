@@ -435,11 +435,13 @@ class LTXGenerator:
                     self._graph_runner = ForwardGraphRunner(
                         pipe.transformer,
                         max_captures=self.config.ltx25_cuda_graph_max_captures,
+                        max_tokens=self.config.ltx25_cuda_graph_max_tokens,
                     )
                     self._graph_runner.install()
                     print(
                         "[ltx25] CUDA graph capture enabled for transformer.forward "
-                        f"(max_captures={self.config.ltx25_cuda_graph_max_captures})",
+                        f"(max_captures={self.config.ltx25_cuda_graph_max_captures}, "
+                        f"max_tokens={self.config.ltx25_cuda_graph_max_tokens})",
                         flush=True,
                     )
                 else:

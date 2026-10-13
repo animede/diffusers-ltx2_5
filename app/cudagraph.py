@@ -40,8 +40,17 @@ _EAGER = object()  # blacklist sentinel
 
 
 class ForwardGraphRunner:
-    def __init__(self, module: torch.nn.Module, warmup_iters: int = 3, max_captures: int = 8):
+    def __init__(self, module: torch.nn.Module, warmup_iters: int = 3, max_captures: int = 8,
+                 max_tokens: int = 0):
         self._module = module
+        # capture する shape の上限(hidden_states のトークン数、0 = 無制限)。
+        # 2026-10-13: MV の大画角(1536×896×121f ≈ 21.5k トークン)を capture すると、
+        # graph の private pool が中間テンソルごと常駐し、ジョブ後の empty_cache() でも
+        # 返らない(実測: 5秒後 39.4GB / 10秒後 46.7GB をプロセスが保持し続け、同居 H3 の
+        # load が gateway の空き VRAM ガードで 409 になった)。大画角は GPU 計算律速で
+        # graph の効果(起動オーバーヘッド削減)が小さいので eager に落とす。
+        self._max_tokens = int(max_tokens or 0)
+        self._warned_large = False
         self._orig_forward = module.forward
         self._warmup_iters = warmup_iters
         self._max_captures = max_captures
@@ -108,6 +117,21 @@ class ForwardGraphRunner:
         if cap is _EAGER:
             return self._orig_forward(**kwargs)
         if cap is None:
+            hs = kwargs.get("hidden_states")
+            if (
+                self._max_tokens > 0
+                and isinstance(hs, torch.Tensor)
+                and hs.dim() >= 2
+                and hs.shape[1] > self._max_tokens
+            ):
+                # 大きい shape は capture しない(上の __init__ のコメント参照)。
+                # max_captures の枠も消費しない(小さい shape の capture を妨げない)。
+                if not self._warned_large:
+                    self._warned_large = True
+                    print(f"[ltx25] cudagraph: {hs.shape[1]} tokens > max_tokens="
+                          f"{self._max_tokens} -> eager (not captured)", flush=True)
+                self._captures[key] = _EAGER
+                return self._orig_forward(**kwargs)
             n_live = sum(1 for v in self._captures.values() if v is not _EAGER)
             if n_live >= self._max_captures:
                 if _EAGER not in self._captures.values():
